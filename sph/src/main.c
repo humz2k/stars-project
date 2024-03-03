@@ -11,7 +11,7 @@
 #include "rcamera.h"
 #include "raymath.h"
 
-void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int width, int height){
+void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int width, int height, float* rhos, int paused){
     int axis_size = 30;
 
     int tick_size = 5;
@@ -27,51 +27,99 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
     int nxticks = 7;
     int nyticks = 11;
 
-    Vector2 points[samples];
-    #pragma omp parallel for
-    for (int i = 0; i < samples; i++){
-        float r = rmin + ((float)i) * dx;
+    //float rhos[parts.n_particles];
+    if (!paused){
+        #pragma omp parallel for
+        for (int i = 0; i < samples; i++){
+            float r = rmin + ((float)i) * dx;
 
-        vec3 vec_r = v3(r,0,0);
-        float rho = getRho(vec_r,parts,h);
+            vec3 vec_r = v3(r,0,0);
+            float rho = getRho(vec_r,parts,h);
 
-        int render_rho = height - ((rho / rho_max) * (height - axis_size*2) + axis_size);
-        int render_r = ((r - rmin) / (rmax - rmin)) * (width - axis_size*2) + axis_size;
+            rhos[i*3] = rho;
 
-        points[i].x = render_r;
-        points[i].y = render_rho;
+            if (rho > rho_max){
+                rho_max = rho;
+            }
+
+            vec_r = v3(0,r,0);
+            rho = getRho(vec_r,parts,h);
+
+            rhos[i*3 + 1] = rho;
+
+            if (rho > rho_max){
+                rho_max = rho;
+            }
+
+            vec_r = v3(0,0,r);
+            rho = getRho(vec_r,parts,h);
+
+            rhos[i*3 + 2] = rho;
+
+            if (rho > rho_max){
+                rho_max = rho;
+            }
+
+
+        }
     }
 
-    DrawLine(axis_size,axis_size,axis_size,height - axis_size,BLACK);
-    DrawLine(axis_size,height - axis_size,width - axis_size,height - axis_size,BLACK);
+    Vector2 points[3][samples];
+    for (int i = 0; i < samples; i++){
+        float r = rmin + ((float)i) * dx;
+        int render_r = ((r - rmin) / (rmax - rmin)) * (width - axis_size*2) + axis_size;
+
+        points[0][i].x = render_r;
+        points[1][i].x = render_r;
+        points[2][i].x = render_r;
+
+        //vec3 vec_r = v3(r,0,0);
+        float rho = rhos[i*3];
+        int render_rho = height - ((rho / rho_max) * (height - axis_size*2) + axis_size);
+        points[0][i].y = render_rho;
+
+        rho = rhos[i*3 + 1];
+        render_rho = height - ((rho / rho_max) * (height - axis_size*2) + axis_size);
+        points[1][i].y = render_rho;
+
+        rho = rhos[i*3 + 2];
+        render_rho = height - ((rho / rho_max) * (height - axis_size*2) + axis_size);
+        points[2][i].y = render_rho;
+    }
+
+    DrawLine(axis_size,axis_size,axis_size,height - axis_size,WHITE);
+    DrawLine(axis_size,height - axis_size,width - axis_size,height - axis_size,WHITE);
 
     dx = (rmax - rmin) / ((float)nxticks - 1.0f);
     for (int i = 0; i < nxticks; i++){
         float r = dx * ((float)i) + rmin;
         int render_r = ((r - rmin) / (rmax - rmin)) * (width - axis_size*2) + axis_size;
         //DrawCircle(render_r,axis_size,5,RED);
-        DrawLine(render_r,height - axis_size,render_r,(height - axis_size) + tick_size,BLACK);
+        DrawLine(render_r,height - axis_size,render_r,(height - axis_size) + tick_size,WHITE);
         char x_text[50];
         sprintf(x_text,"%.2f",r/R);
-        DrawText(x_text,render_r,(height - axis_size) + tick_size,10,BLACK);
+        DrawText(x_text,render_r,(height - axis_size) + tick_size,10,WHITE);
     }
 
     float dy = rho_max / ((float)nyticks - 1.0f);
     for (int i = 0; i < nyticks; i++){
         float rho = dy * ((float)i);
         int render_rho = height - ((rho / rho_max) * (height - axis_size*2) + axis_size);
-        DrawLine(axis_size - tick_size,render_rho,axis_size,render_rho,BLACK);
+        DrawLine(axis_size - tick_size,render_rho,axis_size,render_rho,WHITE);
         char y_text[50];
         sprintf(y_text,"%.2f",rho);
         int string_width = ((float)MeasureText(y_text,10)) * 1.2f;
         int string_height = MeasureTextEx(GetFontDefault(),y_text,10,1).y;
-        DrawText(y_text,(axis_size - tick_size) - string_width,render_rho - (string_height/2),10,BLACK);
+        DrawText(y_text,(axis_size - tick_size) - string_width,render_rho - (string_height/2),10,WHITE);
     }
 
-    DrawLineStrip(points,samples,GREEN);
+    DrawLineStrip(points[2],samples,YELLOW);
+    DrawLineStrip(points[0],samples,GREEN);
+    DrawLineStrip(points[1],samples,RED);
+
 }
 
-void draw_particles(particles parts, float r){
+void draw_particles(particles parts, Mesh sphere_mesh, Material mat){
     Vector3* pos = (Vector3*)parts.pos;
     vec3* vel = parts.vel;
     int n_particles = parts.n_particles;
@@ -91,6 +139,7 @@ void draw_particles(particles parts, float r){
             max_speed = speeds[i];
         }
     }
+    Matrix transforms[n_particles];
 
     for (int i = 0; i < n_particles; i++){
         float color = rs[i]/R;//speeds[i] / max_speed;
@@ -103,12 +152,24 @@ void draw_particles(particles parts, float r){
         col.g = ((float)col.g) * (1.0f-color);
         col.b = 0;//((float)col.b) * (1.0f-color);
         col.a = 200;
-        DrawSphere(pos[i],r,col);
+
+        Matrix translation = MatrixTranslate(pos[i].x,pos[i].y,pos[i].z);
+        Vector3 axis = Vector3One();
+        float angle = 0;
+        Matrix rotation = MatrixRotate(axis, angle);
+
+        transforms[i] = MatrixMultiply(rotation, translation);
+        DrawMesh(sphere_mesh,mat,transforms[i]);
+
+        //transforms[i] =
+
+        //DrawSphere(pos[i],r,col);
     }
 
     Color col = WHITE;
     col.a = 20;
     DrawSphereWires(Vector3Zero(),R,100,100,col);
+
 }
 
 float camera_pitch = 0;
@@ -144,8 +205,8 @@ int main(){
     set_seed(21082001);
 
     float M = 2;
-    int N = 2000;
-    float R = 1;
+    int N = 400;
+    float R = 0.75;
 
     float h = 0.1f;//0.04 / sqrtf((float)N / 1000.0f);
     float k = 0.1f;
@@ -157,7 +218,7 @@ int main(){
     float t = 0;
 
     float lambda = 2.0f*k*(1.0f+n)*powf(M_PI,(-3.0f/(2.0f*n))) * powf((M*tgammaf(5.0f/2.0f+n)/(R*R*R)/tgammaf(1.0f+n)),(1.0f/n)) / (R*R);
-    printf("lambda = %g\n",lambda);
+    //printf("lambda = %g\n",lambda);
 
     float timestep_controller = -0.1;
 
@@ -167,9 +228,16 @@ int main(){
 
     leapfrog_init(parts,h,k,n,lambda,nu);
 
+    Mesh sphere_mesh = GenMeshSphere(((2.0f/(float)N)/0.0025f) * 0.01f,10,10);
+
+    Material mat = LoadMaterialDefault();
+    mat.maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
+
     //particles_debug(parts);
 
     int paused = 1;
+    float rhos[N * 3];
+    int computed = 0;
 
     while (!WindowShouldClose()){
 
@@ -185,15 +253,18 @@ int main(){
 
         BeginMode3D(camera);
 
-            draw_particles(parts,((2.0f/(float)N)/0.0025f) * 0.01f);
+            draw_particles(parts,sphere_mesh,mat);
 
             DrawGrid(10,1);
 
         EndMode3D();
 
         BeginTextureMode(plot_tex);
-        ClearBackground(WHITE);
-        plot_rho(parts,h,R,R * 1.5f,5,plotWidth,plotHeight);
+        Color clear_back = WHITE;
+        clear_back.a = 0;
+        ClearBackground(clear_back);
+        plot_rho(parts,h,R,R * 1.5f,5,plotWidth,plotHeight,rhos,paused && computed);
+        computed = 1;
         EndTextureMode();
 
         //DrawTexture(plot_tex.texture,GetRenderWidth() - plotWidth,0,WHITE);
@@ -224,6 +295,7 @@ int main(){
     }
 
     particles_destroy(parts);
+    UnloadMesh(sphere_mesh);
 
     CloseWindow();
     return 0;
