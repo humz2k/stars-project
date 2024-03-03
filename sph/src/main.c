@@ -11,12 +11,12 @@
 #include "rcamera.h"
 #include "raymath.h"
 
-void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int width, int height, float* rhos, int paused){
+float plot_rho(particles parts, float h, float R, float rmax, float rho_max, int width, int height, float* rhos, int paused){
     int axis_size = 30;
 
     int tick_size = 5;
 
-    int samples = 100;
+    int samples = 1000;
 
     float rmin = 0;
     float dx = (rmax - rmin) / ((float)samples - 1.0f);
@@ -27,11 +27,16 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
     int nxticks = 7;
     int nyticks = 11;
 
+    float out = 0;
+    int zero_found = 0;
+
     //float rhos[parts.n_particles];
     if (!paused){
         #pragma omp parallel for
         for (int i = 0; i < samples; i++){
             float r = rmin + ((float)i) * dx;
+
+            float total_rho = 0;
 
             vec3 vec_r = v3(r,0,0);
             float rho = getRho(vec_r,parts,h);
@@ -42,6 +47,13 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
                 rho_max = rho;
             }
 
+            total_rho += rho;
+
+            //if (((rho/rhos[0]) <= 0.2) && (!zero_found)){
+            //    zero_found = 1;
+            //    out = r;
+            //}
+
             vec_r = v3(0,r,0);
             rho = getRho(vec_r,parts,h);
 
@@ -51,6 +63,13 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
                 rho_max = rho;
             }
 
+            total_rho += rho;
+
+            //if (((rho/rhos[0]) <= 0.2) && (!zero_found)){
+            //    zero_found = 1;
+            //    out = r;
+            //}
+
             vec_r = v3(0,0,r);
             rho = getRho(vec_r,parts,h);
 
@@ -59,6 +78,18 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
             if (rho > rho_max){
                 rho_max = rho;
             }
+
+            total_rho += rho;
+
+            if ((fabs(total_rho - 0.0001f) < 0.00005f) && (!zero_found)){
+                zero_found = 1;
+                out = r;
+            }
+
+            //if (zero_found && (total_rho >= 0.0000001f)){
+            //    zero_found = 0;
+            //    out = r;
+            //}
 
 
         }
@@ -87,6 +118,10 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
         points[2][i].y = render_rho;
     }
 
+    DrawLineStrip(points[2],samples,YELLOW);
+    DrawLineStrip(points[0],samples,GREEN);
+    DrawLineStrip(points[1],samples,RED);
+
     DrawLine(axis_size,axis_size,axis_size,height - axis_size,WHITE);
     DrawLine(axis_size,height - axis_size,width - axis_size,height - axis_size,WHITE);
 
@@ -113,9 +148,7 @@ void plot_rho(particles parts, float h, float R, float rmax, float rho_max, int 
         DrawText(y_text,(axis_size - tick_size) - string_width,render_rho - (string_height/2),10,WHITE);
     }
 
-    DrawLineStrip(points[2],samples,YELLOW);
-    DrawLineStrip(points[0],samples,GREEN);
-    DrawLineStrip(points[1],samples,RED);
+    return out;
 
 }
 
@@ -210,7 +243,7 @@ int main(){
 
     float h = 0.1f;//0.04 / sqrtf((float)N / 1000.0f);
     float k = 0.1f;
-    float n = 3;
+    float n = 1;
     //float lambda = 2.01;
     float nu = 1;
     float dt = 0.04;
@@ -236,8 +269,10 @@ int main(){
     //particles_debug(parts);
 
     int paused = 1;
-    float rhos[N * 3];
+    float rhos[1000 * 3];
     int computed = 0;
+
+    float sphr = R;
 
     while (!WindowShouldClose()){
 
@@ -249,23 +284,31 @@ int main(){
 
         BeginDrawing();
 
+        BeginTextureMode(plot_tex);
+        Color clear_back = WHITE;
+        clear_back.a = 0;
+        ClearBackground(clear_back);
+        float tmp = plot_rho(parts,h,R,R * 1.5f,5,plotWidth,plotHeight,rhos,paused && computed);
+        if (!(paused && computed)){
+            sphr = tmp;
+        }
+        computed = 1;
+        EndTextureMode();
+
         ClearBackground(BLACK);
 
         BeginMode3D(camera);
 
             draw_particles(parts,sphere_mesh,mat);
 
+            Color star_col = YELLOW;
+            star_col.a = 10;
+
+            DrawSphereWires(Vector3Zero(),sphr,100,100,star_col);
+
             DrawGrid(10,1);
 
         EndMode3D();
-
-        BeginTextureMode(plot_tex);
-        Color clear_back = WHITE;
-        clear_back.a = 0;
-        ClearBackground(clear_back);
-        plot_rho(parts,h,R,R * 1.5f,5,plotWidth,plotHeight,rhos,paused && computed);
-        computed = 1;
-        EndTextureMode();
 
         //DrawTexture(plot_tex.texture,GetRenderWidth() - plotWidth,0,WHITE);
         DrawTextureRec(plot_tex.texture, (Rectangle){ 0, 0, (float)plot_tex.texture.width, (float)-plot_tex.texture.height }, (Vector2){ GetRenderWidth() - plotWidth, 0 }, WHITE);
