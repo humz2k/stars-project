@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.include": "makefile",
+        "initial_conditions.h": "c",
+        "log.h": "c",
+        "__locale": "c",
+        "bitset": "c",
+        "math.h": "c"
+    }
+}
