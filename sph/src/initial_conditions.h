@@ -39,7 +39,7 @@ static inline void initialize_random_sphere(particles parts, float r){
                         frand_range(-r,r),
                         frand_range(-r,r));
         }
-        vec3 v_i = v3zero();
+        vec3 v_i = v3(frand_range(-1,1),frand_range(-1,1),frand_range(-1,1));
         pos[i] = p_i;
         vel[i] = v_i;
     }

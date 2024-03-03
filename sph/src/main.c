@@ -12,7 +12,7 @@
 #include "raymath.h"
 
 float plot_rho(particles parts, float h, float R, float rmax, float rho_max, int width, int height, float* rhos, int paused){
-    int axis_size = 30;
+    int axis_size = 50;
 
     int tick_size = 5;
 
@@ -152,6 +152,10 @@ float plot_rho(particles parts, float h, float R, float rmax, float rho_max, int
 
 }
 
+
+int shader_loc;
+Shader shader;
+
 void draw_particles(particles parts, Mesh sphere_mesh, Material mat){
     Vector3* pos = (Vector3*)parts.pos;
     vec3* vel = parts.vel;
@@ -172,6 +176,9 @@ void draw_particles(particles parts, Mesh sphere_mesh, Material mat){
             max_speed = speeds[i];
         }
     }
+
+    SetShaderValue(shader,shader_loc,&R,SHADER_UNIFORM_FLOAT);
+
     Matrix transforms[n_particles];
 
     for (int i = 0; i < n_particles; i++){
@@ -216,6 +223,9 @@ void RotateCamera(Camera *camera, float speed)
     camera->position = Vector3Add(camera->target, view);
 
     CameraPitch(camera, (IsKeyDown(KEY_DOWN) - IsKeyDown(KEY_UP))*speed*GetFrameTime(), 1, 1, 0);
+
+    Vector3 forward = Vector3Scale(Vector3Normalize(Vector3Subtract(camera->target,camera->position)),GetMouseWheelMove());
+    camera->position = Vector3Add(camera->position,forward);
 }
 
 int main(){
@@ -237,16 +247,16 @@ int main(){
 
     set_seed(21082001);
 
-    float M = 2;
-    int N = 400;
-    float R = 0.75;
+    float M = 20;
+    int N = 20000;
+    float R = 1;
 
-    float h = 0.1f;//0.04 / sqrtf((float)N / 1000.0f);
+    float h = 0.01f;//0.04 / sqrtf((float)N / 1000.0f);
     float k = 0.1f;
-    float n = 1;
+    float n = 5;
     //float lambda = 2.01;
     float nu = 1;
-    float dt = 0.04;
+    float dt = 0.01;
     float mass = M/(float)N;
     float t = 0;
 
@@ -256,15 +266,19 @@ int main(){
     float timestep_controller = -0.1;
 
     particles parts = particles_alloc(N,mass);
-    initialize_random_sphere(parts,R * 1.2);
+    initialize_random_sphere(parts,R * 3);
     //initialize_random(parts,-0.5,0.5,-0.5,0.5,-0.5,0.5);
 
     leapfrog_init(parts,h,k,n,lambda,nu);
 
     Mesh sphere_mesh = GenMeshSphere(((2.0f/(float)N)/0.0025f) * 0.01f,10,10);
 
+    shader = LoadShader("/Users/humzaqureshi/GitHub/stars-project/sph/src/shaders/particles.vs","/Users/humzaqureshi/GitHub/stars-project/sph/src/shaders/particles.fs");
+
     Material mat = LoadMaterialDefault();
     mat.maps[MATERIAL_MAP_DIFFUSE].color = BLUE;
+    mat.shader = shader;
+    shader_loc = GetShaderLocation(shader,"R");
 
     //particles_debug(parts);
 
@@ -339,6 +353,7 @@ int main(){
 
     particles_destroy(parts);
     UnloadMesh(sphere_mesh);
+    UnloadShader(shader);
 
     CloseWindow();
     return 0;
